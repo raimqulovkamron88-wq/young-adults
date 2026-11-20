@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function role() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ? get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role : 'player'; }
+    function staff() { return role() in ['superadmin','admin','moderator']; }
+    function manager() { return role() in ['superadmin','admin']; }
+    function superadmin() { return role() == 'superadmin'; }
+    match /userProfiles/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || staff());
+      allow list: if staff();
+      // Profile economy and identity fields are server-managed through callable functions.
+      allow create, update, delete: if false;
+    }
+    match /gameStates/{uid} { allow read: if signedIn() && request.auth.uid == uid; allow write: if false; }
+    match /nicknames/{id} { allow get: if signedIn(); allow list, create, update, delete: if false; }
+    match /admins/{uid} { allow get: if signedIn() && (request.auth.uid == uid || superadmin()); allow list: if superadmin(); allow write: if false; }
+    match /adminQuestions/{id} { allow read: if staff(); allow create, update, delete: if manager(); }
+    match /externalGames/{id} { allow read: if signedIn(); allow create, update, delete: if manager(); }
+    match /adminLogs/{id} { allow read: if superadmin() || role() == 'admin'; allow write: if false; }
+    match /leaderboard/{id} { allow read: if signedIn(); allow write: if false; }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
